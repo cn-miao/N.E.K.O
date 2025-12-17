@@ -21,6 +21,14 @@ async def get_default_index(request: Request):
     })
 
 
+@router.get("/mobile", response_class=HTMLResponse)
+async def get_mobile_index(request: Request):
+    templates = get_templates()
+    return templates.TemplateResponse("templates/index.html", {
+        "request": request
+    })
+
+
 @router.get("/l2d", response_class=HTMLResponse)
 async def get_l2d_manager(request: Request):
     """渲染Live2D模型管理器页面"""

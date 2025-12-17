@@ -360,10 +360,17 @@ class CustomStaticFiles(StaticFiles):
             response.headers['Content-Type'] = 'application/javascript'
         return response
 
+# 导入移动端静态文件处理器
+from utils.live2d_mobile_utils import MobileStaticFiles
+
 # 确定 static 目录位置（使用 _get_app_root）
 static_dir = os.path.join(_get_app_root(), 'static')
 
+# 为普通路径挂载静态文件
 app.mount("/static", CustomStaticFiles(directory=static_dir), name="static")
+
+# 为移动端路径挂载压缩版静态文件
+app.mount("/mobile/static", MobileStaticFiles(directory=static_dir), name="mobile_static")
 
 # 挂载用户文档下的live2d目录（只在主进程中执行，子进程不提供HTTP服务）
 if _IS_MAIN_PROCESS:
@@ -371,12 +378,16 @@ if _IS_MAIN_PROCESS:
     user_live2d_path = str(_config_manager.live2d_dir)
     if os.path.exists(user_live2d_path):
         app.mount("/user_live2d", CustomStaticFiles(directory=user_live2d_path), name="user_live2d")
+        # 为移动端挂载压缩版用户Live2D目录
+        app.mount("/mobile/user_live2d", MobileStaticFiles(directory=user_live2d_path), name="mobile_user_live2d")
         logger.info(f"已挂载用户Live2D目录: {user_live2d_path}")
 
     # 挂载用户mod路径
     user_mod_path = _config_manager.get_workshop_path()
     if os.path.exists(user_mod_path) and os.path.isdir(user_mod_path):
         app.mount("/user_mods", CustomStaticFiles(directory=user_mod_path), name="user_mods")
+        # 为移动端挂载压缩版用户mod路径
+        app.mount("/mobile/user_mods", MobileStaticFiles(directory=user_mod_path), name="mobile_user_mods")
         logger.info(f"已挂载用户mod路径: {user_mod_path}")
 
 # --- Initialize Shared State and Mount Routers ---
@@ -479,6 +490,8 @@ async def _init_and_mount_workshop():
         if workshop_path and os.path.exists(workshop_path) and os.path.isdir(workshop_path):
             try:
                 app.mount("/workshop", StaticFiles(directory=workshop_path), name="workshop")
+                # 为移动端挂载压缩版workshop目录
+                app.mount("/mobile/workshop", MobileStaticFiles(directory=workshop_path), name="mobile_workshop")
                 logger.info(f"✅ 成功挂载创意工坊目录: {workshop_path}")
             except Exception as e:
                 logger.error(f"挂载创意工坊目录失败: {e}")
@@ -492,6 +505,8 @@ async def _init_and_mount_workshop():
         if workshop_path and os.path.exists(workshop_path) and os.path.isdir(workshop_path):
             try:
                 app.mount("/workshop", StaticFiles(directory=workshop_path), name="workshop")
+                # 为移动端挂载压缩版workshop目录
+                app.mount("/mobile/workshop", MobileStaticFiles(directory=workshop_path), name="mobile_workshop")
                 logger.info(f"✅ 降级模式下成功挂载创意工坊目录: {workshop_path}")
             except Exception as mount_err:
                 logger.error(f"降级模式挂载创意工坊目录仍然失败: {mount_err}")
@@ -632,7 +647,17 @@ if __name__ == "__main__":
 
     print(f"启动配置: {get_start_config()}")
 
-    # 2) 定义服务器关闭回调
+    # 2) 添加启动事件处理器
+    @app.on_event("startup")
+    async def startup_event():
+        """服务器启动时初始化workshop目录"""
+        try:
+            await _init_and_mount_workshop()
+            logger.info("✅ Workshop目录初始化完成")
+        except Exception as e:
+            logger.error(f"Workshop目录初始化失败: {e}")
+
+    # 3) 定义服务器关闭回调
     def shutdown_server():
         logger.info("收到浏览器关闭信号，正在关闭服务器...")
         os.kill(os.getpid(), signal.SIGTERM)
